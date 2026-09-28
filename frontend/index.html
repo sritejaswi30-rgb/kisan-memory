@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KisanMemory — AI that remembers every field</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">🌱</span>
+      <div class="brand-text">
+        <h1>KisanMemory</h1>
+        <p class="tagline">AI that remembers every field and learns from every season.</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="status">
+        <span id="status-hindsight" class="pill pill-wait">⚪ Checking Hindsight…</span>
+        <span id="status-llm" class="pill pill-wait">⚪ Checking AI…</span>
+      </div>
+      <button type="button" id="reset-btn" class="reset-btn" title="Clears this demo screen only. Your Hindsight memories are never deleted.">
+        ↺ Demo Reset
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="col-main">
+      <div class="card context-bar">
+        <div class="context-select">
+          <label for="user-select">Farmer</label>
+          <select id="user-select" aria-label="Select farmer">
+            <option value="1001">Ravi</option>
+            <option value="1002">Sita</option>
+          </select>
+        </div>
+        <div class="context-select">
+          <label for="field-select">Field</label>
+          <select id="field-select" aria-label="Select field">
+            <option>Loading…</option>
+          </select>
+        </div>
+        <div class="scope-indicator" id="memory-scope">Memory scope: Ravi • Field A</div>
+      </div>
+
+      <div class="card profile">
+        <div class="profile-item"><span class="label">Farmer</span><strong id="profile-farmer">Ravi</strong></div>
+        <div class="profile-item"><span class="label">Field</span><strong id="profile-field">Field A</strong></div>
+        <div class="profile-item"><span class="label">Crop</span><strong id="profile-crop">Tomato</strong></div>
+        <div class="profile-item"><span class="label">Memory bank</span><strong id="profile-bank">kisan-user-1001</strong></div>
+      </div>
+
+      <div class="card activity">
+        <div class="activity-title">🧠 HINDSIGHT MEMORY</div>
+        <div class="activity-grid">
+          <div class="activity-stat">
+            <span class="activity-num" id="act-recalled">0</span>
+            <span class="activity-label">memories recalled</span>
+          </div>
+          <div class="activity-stat">
+            <span class="activity-num" id="act-retained">0</span>
+            <span class="activity-label">new field experience remembered</span>
+          </div>
+          <div class="activity-stat activity-stat-wide">
+            <span class="activity-num activity-num-small" id="act-history">—</span>
+            <span class="activity-label">current response used field history</span>
+          </div>
+        </div>
+        <div class="activity-dup" id="act-dup" hidden></div>
+      </div>
+
+      <div class="card ask">
+        <h2>Ask about your field history</h2>
+        <div class="demo-buttons">
+          <button type="button" class="demo-btn" data-message="What happened after the heavy rain?">
+            What happened after the heavy rain?
+          </button>
+          <button type="button" class="demo-btn" data-message="What happened the last time I had this problem?">
+            What happened the last time I had this problem?
+          </button>
+          <button type="button" class="demo-btn" data-message="What have I learned from my previous experiences?">
+            What have I learned from my previous experiences?
+          </button>
+          <button type="button" class="demo-btn demo-btn-report" data-message="I tried Treatment A again this time, but it did not help.">
+            🌱 Report: Treatment A did not help
+          </button>
+        </div>
+        <form id="chat-form" autocomplete="off">
+          <input id="chat-input" type="text" placeholder="Ask about your field history..." aria-label="Farmer question" />
+          <button type="submit" id="send-btn">Send</button>
+        </form>
+      </div>
+
+      <div id="error-banner" class="error-banner" hidden>
+        <span id="error-text"></span>
+        <button type="button" id="error-dismiss" class="error-dismiss" aria-label="Dismiss">✕</button>
+      </div>
+
+      <div class="card conversation">
+        <div class="section-head">
+          <h2>Field conversation</h2>
+          <span class="hint">Four things stay visually separate</span>
+        </div>
+        <ul class="legend">
+          <li class="legend-item legend-memory">Past field memory</li>
+          <li class="legend-item legend-farmer">Current farmer message</li>
+          <li class="legend-item legend-ai">AI response</li>
+          <li class="legend-item legend-new">New memory created</li>
+        </ul>
+        <div id="empty-state" class="empty-state">
+          <div class="empty-title">No questions asked yet</div>
+          <div class="empty-sub" id="empty-sub">Ask above — KisanMemory answers from Ravi's own recorded field history, not generic advice.</div>
+        </div>
+        <div id="messages" class="messages"></div>
+      </div>
+
+      <div id="learning-panel" class="learning-panel" hidden>
+        <div class="learning-title" id="learning-title">🌱 NEW MEMORY CREATED — field experience remembered</div>
+        <ul id="learning-list" class="learning-list"></ul>
+      </div>
+
+      <div class="card memories">
+        <div class="section-head">
+          <h2>Past field memory</h2>
+          <span class="hint">Recalled live from Hindsight · this response used <span id="memory-count">0</span> memories</span>
+        </div>
+        <ul id="memory-list" class="memory-list">
+          <li class="memory-empty">No memories used yet. Ask a question to recall field history.</li>
+        </ul>
+      </div>
+
+      <div class="card why" id="why-card" hidden>
+        <h2>Why this answer?</h2>
+        <div class="why-sub">Why this answer is personalized:</div>
+        <ul id="why-list" class="why-list"></ul>
+      </div>
+    </section>
+
+    <aside class="col-side">
+      <div class="card timeline-card">
+        <div class="section-head">
+          <h2>Field timeline</h2>
+          <span class="hint" id="timeline-hint">Live from Hindsight · Field A</span>
+        </div>
+        <ol id="timeline" class="timeline">
+          <li class="timeline-loading">
+            Loading timeline…
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+          </li>
+        </ol>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
