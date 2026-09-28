@@ -57,13 +57,17 @@
         <div class="activity-grid">
           <div class="activity-stat">
             <span class="activity-num" id="act-recalled">0</span>
-            <span class="activity-label">memories recalled</span>
+            <span class="activity-label">memories retrieved</span>
+          </div>
+          <div class="activity-stat">
+            <span class="activity-num" id="act-used">0</span>
+            <span class="activity-label">memories used for this answer</span>
           </div>
           <div class="activity-stat">
             <span class="activity-num" id="act-retained">0</span>
             <span class="activity-label">new field experience remembered</span>
           </div>
-          <div class="activity-stat activity-stat-wide">
+          <div class="activity-stat">
             <span class="activity-num activity-num-small" id="act-history">—</span>
             <span class="activity-label">current response used field history</span>
           </div>
@@ -124,7 +128,7 @@
       <div class="card memories">
         <div class="section-head">
           <h2>Past field memory</h2>
-          <span class="hint">Recalled live from Hindsight · this response used <span id="memory-count">0</span> memories</span>
+          <span class="hint">Recalled live from Hindsight · <span id="memory-count">0</span> retrieved · <span id="memory-used">0</span> used for this answer</span>
         </div>
         <ul id="memory-list" class="memory-list">
           <li class="memory-empty">No memories used yet. Ask a question to recall field history.</li>

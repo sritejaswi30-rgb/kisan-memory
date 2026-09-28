@@ -30,9 +30,11 @@ const els = {
   statusHindsight: document.getElementById("status-hindsight"),
   statusLlm: document.getElementById("status-llm"),
   actRecalled: document.getElementById("act-recalled"),
+  actUsed: document.getElementById("act-used"),
   actRetained: document.getElementById("act-retained"),
   actHistory: document.getElementById("act-history"),
   actDup: document.getElementById("act-dup"),
+  memoryUsed: document.getElementById("memory-used"),
   whyCard: document.getElementById("why-card"),
   whyList: document.getElementById("why-list"),
 };
@@ -70,7 +72,339 @@ function escapeHtml(value) {
 }
 
 function stripWhen(text) {
-  return String(text).replace(/\s*\|\s*When:\s*\d{4}-\d{2}-\d{2}/g, "");
+  return String(text).replace(/\s*\|\s*[^|]+/g, "");
+}
+
+const FAIL_RE =
+  /\b(did not|didn'?t|failed|ineffective|no effect|not help|not improv|not effective|no improvement|no benefit|without (?:improvement|success|benefit)|unsuccessful)\b/i;
+const SUCCESS_RE = /\b(?:reduc|improv|recover|lessen|helped|worked|effective|success|better|resolved)/i;
+const APPLIED_RE = /\b(?:applied|re-applied|tried|sprayed|treated|used)\b/i;
+const INTENT_RE =
+  /\b(?:to|in order to|aimed at|so as to)\s+(?:improv|reduc|help|recover|resolve|control|prevent)/i;
+const TREATMENT_RE = /\btreatment\s+[a-z0-9]+\b/gi;
+const MONTHS_JS = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9,
+  oct: 10, nov: 11, dec: 12,
+};
+const OBJECT_WORDS = [
+  "soil moisture", "leaf yellowing", "yellowing", "fungal symptoms", "disease symptoms",
+  "waterlogging", "irrigation", "aphids", "pest damage", "yield",
+];
+const EVENT_ICONS = {
+  planting: "🌱", weather: "🌧", irrigation: "💧", soil: "⚠",
+  disease: "🍄", treatment: "🌿", outcome_ok: "✅", outcome_fail: "❌", other: "📌",
+};
+
+function titleCase(value) {
+  return value.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function lowerFirst(value) {
+  return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+function shortDate(isoDate) {
+  if (!isoDate) return "";
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return isoDate;
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function explicitDates(text) {
+  const found = [];
+  let masked = text;
+  const add = (start, end, year, month, day) => {
+    if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+    if (found.some((item) => item.start === start)) return false;
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const check = new Date(`${iso}T00:00:00`);
+    if (Number.isNaN(check.getTime()) || check.getDate() !== day) return false;
+    found.push({ start, end, iso });
+    masked = masked.slice(0, start) + " ".repeat(end - start) + masked.slice(end);
+    return true;
+  };
+  let match;
+
+  const rangeIso = /\b(?:between|from)\s+(20\d{2}-\d{2}-\d{2})\s+(?:and|to|-)\s+(20\d{2}-\d{2}-\d{2})\b/gi;
+  while ((match = rangeIso.exec(masked))) {
+    const [year, month, day] = match[1].split("-").map(Number);
+    add(match.index, match.index + match[0].length, year, month, day);
+  }
+  const rangeText =
+    /\b(?:between|from)\s+([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\s+(?:and|to|-)\s+([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})\b/gi;
+  while ((match = rangeText.exec(masked))) {
+    const month = MONTHS_JS[match[1].toLowerCase()];
+    if (month) add(match.index, match.index + match[0].length, +match[5], month, +match[2]);
+  }
+
+  const isoRe = /\b(20\d{2})-(\d{2})-(\d{2})\b/g;
+  while ((match = isoRe.exec(masked))) {
+    add(match.index, match.index + match[0].length, +match[1], +match[2], +match[3]);
+  }
+  const monthFirst = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})\b/gi;
+  while ((match = monthFirst.exec(masked))) {
+    const month = MONTHS_JS[match[1].toLowerCase()];
+    if (month) add(match.index, match.index + match[0].length, +match[3], month, +match[2]);
+  }
+  const dayFirst = /\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(20\d{2})\b/gi;
+  while ((match = dayFirst.exec(masked))) {
+    const month = MONTHS_JS[match[2].toLowerCase()];
+    if (month) add(match.index, match.index + match[0].length, +match[3], month, +match[1]);
+  }
+  return found.sort((a, b) => a.start - b.start);
+}
+
+function splitSegments(text, fallbackDate) {
+  const cleaned = stripWhen(text).replace(/\s+/g, " ").trim();
+  if (!cleaned) return [];
+  const dates = explicitDates(cleaned);
+  if (!dates.length) return [{ date: fallbackDate || "", clause: cleaned }];
+
+  const segments = [];
+  let previousEnd = 0;
+  dates.forEach((item) => {
+    const clause = cleaned.slice(previousEnd, item.end).trim();
+    previousEnd = item.end;
+    if (/[a-z]{4}/i.test(clause.replace(/[\d-]/g, ""))) {
+      segments.push({ date: item.iso, clause });
+    }
+  });
+
+  const trailing = cleaned.slice(previousEnd).trim();
+  if (/[a-z]/i.test(trailing)) {
+    if (segments.length) {
+      segments[segments.length - 1].clause += ` ${trailing}`;
+    } else {
+      return [{ date: fallbackDate || "", clause: cleaned }];
+    }
+  }
+  if (!segments.length) return [{ date: fallbackDate || "", clause: cleaned }];
+
+  return segments.map((segment) => ({
+    date: segment.date,
+    clause: segment.clause
+      .replace(/^(?:and|but|then|so|later)\s+/i, "")
+      .replace(/\s+([.,;])/g, "$1")
+      .trim(),
+  }));
+}
+
+function objectPhrase(lowered) {
+  return OBJECT_WORDS.find((word) => lowered.includes(word)) || "";
+}
+
+function contextKind(lowered) {
+  if (/\bplant(?:ed|ing)?\b|\bsow(?:n|ing)?\b|\btransplant/.test(lowered)) return "planting";
+  if (/\bfung|\bdisease|\bblight|\bpathogen/.test(lowered)) return "disease";
+  if (/\brain|\bflood|waterlog|water-log/.test(lowered)) return "weather";
+  if (lowered.includes("irrigat")) return "irrigation";
+  if (lowered.includes("soil moisture")) return "soil";
+  return null;
+}
+
+function contextEvent(kind, lowered, crop) {
+  if (kind === "planting") return { kind, label: `${(crop || "Crop").trim()} planted` };
+  if (kind === "weather") {
+    const rain = /\brain/.test(lowered);
+    const water = /waterlog|water-log|\bflood/.test(lowered);
+    if (rain && water) return { kind, label: "Heavy rain caused waterlogging" };
+    if (water) return { kind, label: "Waterlogging recorded" };
+    return { kind, label: "Heavy rain recorded" };
+  }
+  if (kind === "irrigation") {
+    return {
+      kind,
+      label: /problem|issue|irregular|poor/.test(lowered) ? "Irrigation problem" : "Irrigation recorded",
+    };
+  }
+  const failed = FAIL_RE.test(lowered);
+  const succeeded = !failed && !INTENT_RE.test(lowered) && SUCCESS_RE.test(lowered);
+  if (kind === "soil") {
+    if (succeeded) return { kind: "outcome_ok", label: "Soil moisture improved" };
+    const dropped = /\b(?:drop(?:ped)?|fell|low|declin\w*|dry)/.test(lowered);
+    if (failed || dropped) {
+      return {
+        kind: "soil",
+        label: dropped || /reduc|fell/.test(lowered)
+          ? "Soil moisture dropped"
+          : "Soil moisture problem",
+      };
+    }
+    return { kind, label: "Soil moisture recorded" };
+  }
+  if (succeeded) return { kind: "outcome_ok", label: "Fungal symptoms reduced" };
+  if (failed) return { kind: "outcome_fail", label: "Fungal symptoms worsened" };
+  return { kind, label: "Fungal symptoms recorded" };
+}
+
+function pushOutcome(byName, name, outcome) {
+  const entry = byName.get(name) || { name, appliedDates: [], outcomes: [] };
+  if (outcome.status === "applied") {
+    if (outcome.date && !entry.appliedDates.includes(outcome.date)) {
+      entry.appliedDates.push(outcome.date);
+    }
+  } else {
+    const duplicate = entry.outcomes.some(
+      (item) =>
+        item.date === outcome.date &&
+        item.status === outcome.status &&
+        item.object === outcome.object
+    );
+    if (!duplicate) entry.outcomes.push(outcome);
+  }
+  byName.set(name, entry);
+}
+
+function evidenceRows(memories, crop) {
+  const byName = new Map();
+  const context = [];
+  const contextKeys = new Set();
+
+  memories.forEach((memory) => {
+    const text = stripWhen(memory.text || "");
+    if (!text.trim()) return;
+    const segments = splitSegments(text, memory.date);
+    let carry = null;
+
+    segments.forEach((segment) => {
+      const clause = segment.clause;
+      const lowered = clause.toLowerCase();
+      const namedMatch = clause.match(TREATMENT_RE);
+      const named = namedMatch ? namedMatch[0].toLowerCase() : null;
+      if (named) carry = named;
+
+      const failed = FAIL_RE.test(clause);
+      const succeeded = !failed && !INTENT_RE.test(clause) && SUCCESS_RE.test(clause);
+      const applied = APPLIED_RE.test(clause);
+      const linked = named || (carry && (failed || succeeded || applied) ? carry : null);
+
+      if (linked && !failed && !succeeded && applied) {
+        pushOutcome(byName, linked, { status: "applied", date: segment.date, object: "" });
+        return;
+      }
+      if (linked && (failed || succeeded)) {
+        pushOutcome(byName, linked, {
+          status: failed ? "failure" : "success",
+          date: segment.date,
+          object: objectPhrase(lowered),
+        });
+        return;
+      }
+      const kind = contextKind(lowered);
+      if (kind) {
+        const event = contextEvent(kind, lowered, crop);
+        const key = `${segment.date}|${event.kind}|${event.label}`;
+        if (!contextKeys.has(key)) {
+          contextKeys.add(key);
+          context.push({ kind: event.kind, date: segment.date, label: event.label });
+        }
+        return;
+      }
+      if (linked) {
+        pushOutcome(byName, linked, { status: "applied", date: segment.date, object: "" });
+      }
+    });
+  });
+
+  const rows = [];
+  byName.forEach((entry) => {
+    const label = titleCase(entry.name);
+    if (entry.outcomes.length) {
+      const sorted = entry.outcomes
+        .slice()
+        .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      const latest = sorted[sorted.length - 1];
+      const earlier = sorted.slice(0, -1);
+      const object = latest.object;
+      const text =
+        latest.status === "success"
+          ? object
+            ? `${label} previously improved ${lowerFirst(object)}`
+            : `${label} previously helped`
+          : object
+            ? `${label} previously failed to improve ${lowerFirst(object)}`
+            : `${label} previously did not help`;
+      const appliedDate =
+        latest.status === "success"
+          ? entry.appliedDates
+              .filter((day) => day && (!latest.date || day <= latest.date))
+              .sort()
+              .pop() || ""
+          : "";
+      const when =
+        appliedDate && latest.date && appliedDate !== latest.date
+          ? `${shortDate(appliedDate)} → ${shortDate(latest.date)}`
+          : latest.date
+            ? shortDate(latest.date)
+            : "";
+      rows.push({
+        order: latest.date || appliedDate || "",
+        mark: latest.status === "success" ? "ok" : "fail",
+        text,
+        when,
+        sub: earlier.length
+          ? `earlier: ${earlier
+              .map(
+                (item) =>
+                  `${item.status === "success" ? "helped" : "failed"}${
+                    item.date ? ` (${shortDate(item.date)})` : ""
+                  }`
+              )
+              .join(" · ")}`
+          : "",
+      });
+    } else if (entry.appliedDates.length) {
+      const last = entry.appliedDates.slice().sort().pop();
+      rows.push({ order: last, mark: "neutral", text: `${label} was applied`, when: shortDate(last), sub: "" });
+    }
+  });
+
+  context.forEach((event) => {
+    rows.push({
+      order: event.date || "",
+      mark: "context",
+      text: `${EVENT_ICONS[event.kind] || "📌"} ${event.label}`,
+      when: event.date ? shortDate(event.date) : "",
+      sub: "",
+    });
+  });
+
+  rows.sort((a, b) => {
+    if (a.order && b.order) return a.order.localeCompare(b.order);
+    if (a.order) return -1;
+    if (b.order) return 1;
+    return 0;
+  });
+  return rows;
+}
+
+function renderWhy(memories) {
+  const crop = currentField ? currentField.crop : "";
+  const rows = memories.length ? evidenceRows(memories, crop) : [];
+  if (!rows.length) {
+    els.whyCard.hidden = true;
+    els.whyList.innerHTML = "";
+    return;
+  }
+
+  els.whyList.innerHTML = rows
+    .map((row) => {
+      const cls =
+        row.mark === "ok"
+          ? "why-ok"
+          : row.mark === "fail"
+            ? "why-fail"
+            : row.mark === "neutral"
+              ? "why-neutral"
+              : "why-context";
+      const when = row.when ? `<span class="why-when">${escapeHtml(row.when)}</span>` : "";
+      const sub = row.sub ? `<div class="why-earlier">${escapeHtml(row.sub)}</div>` : "";
+      return `<li class="${cls}">${escapeHtml(row.text)}${when}${sub}</li>`;
+    })
+    .join("");
+  els.whyCard.hidden = false;
 }
 
 function formatDate(isoDate) {
@@ -109,9 +443,14 @@ function appendMessage(kind, kindLabel, metaLabel, body) {
 }
 
 function renderActivity(data) {
-  els.actRecalled.textContent = String(data.memory_count);
+  const retrieved = data.memory_count;
+  const used =
+    typeof data.memories_used_count === "number" ? data.memories_used_count : retrieved;
+  els.actRecalled.textContent = String(retrieved);
+  els.actUsed.textContent = String(used);
+  els.memoryUsed.textContent = String(used);
   els.actRetained.textContent = String(data.new_memories_stored);
-  const usedHistory = data.memory_count > 0;
+  const usedHistory = retrieved > 0;
   els.actHistory.textContent = usedHistory ? "YES" : "NO";
   els.actHistory.classList.toggle("activity-yes", usedHistory);
   els.actHistory.classList.toggle("activity-no", !usedHistory);
@@ -125,64 +464,6 @@ function renderActivity(data) {
     els.actDup.hidden = true;
     els.actDup.textContent = "";
   }
-}
-
-function classifyMemory(text) {
-  const failSignal = /\bfail|failed|did not|didn't|no effect|not help|unsuccess|ineffective/i;
-  const successSignal = /\breduc|improv|recover|lessened|symptoms reduced|helped|worked/i;
-
-  if (/\brain|rainfall|waterlog|water-log/i.test(text)) {
-    return "Previous heavy-rain / waterlogging event found";
-  }
-  if (/\bfung|disease|pathogen|blight/i.test(text)) {
-    return "Previous fungal episode found";
-  }
-  const treatment = text.match(/treatment\s+[a-z0-9]+/i);
-  if (treatment) {
-    const name = treatment[0].replace(/\b\w/g, (char) => char.toUpperCase());
-    if (failSignal.test(text)) return `${name} failure found`;
-    if (successSignal.test(text)) return `${name} success found`;
-    return `${name} outcome found`;
-  }
-  if (/\bplant|sow|seed|transplant/i.test(text)) {
-    return "Planting / crop history found";
-  }
-  if (failSignal.test(text)) return "Unsuccessful field treatment found";
-  if (successSignal.test(text)) return "Field recovery outcome found";
-  const words = text.split(/\s+/).slice(0, 8).join(" ");
-  return `Field record found: ${words}`;
-}
-
-function renderWhy(memories) {
-  if (!memories.length) {
-    els.whyCard.hidden = true;
-    els.whyList.innerHTML = "";
-    return;
-  }
-
-  const buckets = new Map();
-  memories.forEach((memory) => {
-    const label = classifyMemory(stripWhen(memory.text || ""));
-    const entry = buckets.get(label) || { label, count: 0, dates: [] };
-    entry.count += 1;
-    if (memory.date && !entry.dates.includes(memory.date)) entry.dates.push(memory.date);
-    buckets.set(label, entry);
-  });
-
-  const sorted = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
-  els.whyList.innerHTML = sorted
-    .map((entry) => {
-      const when = entry.dates.length
-        ? `<span class="why-when">${escapeHtml(entry.dates.map(formatDate).join(" · "))}${
-            entry.count > 1 ? ` · ${entry.count} memories` : ""
-          }</span>`
-        : entry.count > 1
-          ? `<span class="why-when">${entry.count} memories</span>`
-          : "";
-      return `<li>${escapeHtml(entry.label)}${when}</li>`;
-    })
-    .join("");
-  els.whyCard.hidden = false;
 }
 
 function renderMemories(memories) {
@@ -281,9 +562,15 @@ async function loadTimeline() {
           `<span class="chip chip-type">${escapeHtml(event.type)}</span>`,
           event.count > 1 ? `<span class="chip">${event.count} memories</span>` : "",
         ].join("");
+        const icon = EVENT_ICONS[event.kind] || EVENT_ICONS.other;
+        const headline =
+          event.kind && event.kind !== "other" && event.label
+            ? `<div class="timeline-event">${escapeHtml(icon)} ${escapeHtml(event.label)}</div>`
+            : "";
         return (
           `<li class="${isLatest ? "timeline-new" : event.date ? "" : "timeline-undated"}">` +
           `<div class="timeline-date">${escapeHtml(dateText)}${isLatest ? " · new" : ""}</div>` +
+          headline +
           `<div class="timeline-text">${escapeHtml(stripWhen(event.text))}</div>` +
           `<div class="timeline-meta">${meta}</div></li>`
         );
@@ -392,6 +679,8 @@ function resetDemo() {
   els.whyCard.hidden = true;
   els.whyList.innerHTML = "";
   els.actRecalled.textContent = "0";
+  els.actUsed.textContent = "0";
+  els.memoryUsed.textContent = "0";
   els.actRetained.textContent = "0";
   els.actHistory.textContent = "—";
   els.actHistory.classList.remove("activity-yes", "activity-no");

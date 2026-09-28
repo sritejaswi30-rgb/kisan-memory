@@ -505,9 +505,16 @@ body {
   color: var(--amber);
 }
 
-.timeline-text {
+.timeline-event {
   font-size: 14px;
-  color: var(--ink);
+  font-weight: 700;
+  color: var(--green-900);
+  margin-top: 3px;
+}
+
+.timeline-text {
+  font-size: 13px;
+  color: var(--muted);
   margin-top: 2px;
 }
 
@@ -576,7 +583,7 @@ body {
 
 .activity-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -722,12 +729,34 @@ body {
 }
 
 .why-list li::before {
-  content: "✓";
   position: absolute;
   left: 0;
   top: 0;
-  color: var(--green-700);
   font-weight: 800;
+}
+
+.why-list li.why-ok::before {
+  content: "✓";
+  color: var(--green-700);
+}
+
+.why-list li.why-fail::before {
+  content: "✗";
+  color: #dc2626;
+}
+
+.why-list li.why-neutral::before {
+  content: "•";
+  color: var(--muted);
+}
+
+.why-list li.why-context {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.why-list li.why-context::before {
+  content: none;
 }
 
 .why-list .why-when {
@@ -735,6 +764,12 @@ body {
   color: var(--muted);
   font-weight: 600;
   margin-left: 6px;
+}
+
+.why-list .why-earlier {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .skeleton {

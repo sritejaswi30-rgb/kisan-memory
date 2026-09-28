@@ -23,6 +23,12 @@ SYSTEM_PROMPT = (
     "- When discussing a farming problem, first explain what the farmer experienced previously.\n"
     "- Prefer field-specific history over generic advice.\n"
     "- Do not present pesticide, chemical, dosage, or medical-style instructions as authoritative prescriptions.\n"
+    "- Never tell the farmer to apply a chemical, increase a dosage, or use a specific pesticide product.\n"
+    "- Ground statements in the farmer's record with phrasing like 'Your field history shows...',\n"
+    "  'Previously, this outcome occurred...', 'Based on your recorded history...'.\n"
+    "- If the prompt gives a current field crop and the farmer asks about a different crop,\n"
+    "  answer that this field is recorded with that crop and that no planting record exists\n"
+    "  for the other crop on this field.\n"
     "- Do not claim certainty from memory alone.\n"
     "- Be concise and practical.\n"
     "- Make the memory usage visible in the response.\n"
@@ -101,15 +107,23 @@ def _normalize(data: dict | None, fallback_answer: str) -> dict:
     }
 
 
-async def answer(farmer: str, field: str, message: str, memories: list[dict]) -> dict:
+async def answer(
+    farmer: str,
+    field: str,
+    message: str,
+    memories: list[dict],
+    crop: str | None = None,
+) -> dict:
     if memories:
         memory_lines = "\n".join(f"- [{m['type']}] {m['text']}" for m in memories)
     else:
         memory_lines = "(no relevant field memories found)"
 
+    crop_line = f"Current field crop: {crop}\n" if crop else ""
     user_prompt = (
         f"Farmer: {farmer}\n"
         f"Field: {field}\n"
+        f"{crop_line}"
         f"Farmer's message: {message}\n"
         f"\nRelevant recalled Hindsight memories:\n{memory_lines}\n"
         f"\n{OUTPUT_INSTRUCTION}"

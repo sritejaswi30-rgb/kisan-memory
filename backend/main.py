@@ -65,6 +65,7 @@ class ChatResponse(BaseModel):
     response: str
     memories_used: list[MemoryUsed]
     memory_count: int
+    memories_used_count: int = 0
     new_memories_stored: int
     retained_memories: list[RetainedMemory] = PydanticField(default_factory=list)
     duplicates_skipped: int = 0
@@ -177,6 +178,35 @@ def _with_context(text: str, farmer: str, field: str) -> str:
     if farmer.lower() in low and field.lower() in low:
         return text
     return f"Farmer {farmer}, {field}: {text}"
+
+
+def _normalize_fact(text: str) -> str:
+    lowered = re.sub(r"[^a-z0-9\s]", " ", (text or "").lower())
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+def _count_used_memories(recalled: list[dict], reported: list[str]) -> int:
+    """Memories the model actually drew on, matched back to what we retrieved.
+
+    Not hardcoded: it comes from the model's `memory_facts_used`, which is
+    produced from the memories we put in its reasoning context.
+    """
+    if not recalled:
+        return 0
+    reported_norm = sorted({fact for fact in map(_normalize_fact, reported) if fact})
+    if not reported_norm:
+        return len(recalled)
+
+    used: set[int] = set()
+    for index, memory in enumerate(recalled):
+        key = _normalize_fact(memory.get("text"))
+        if not key:
+            continue
+        if any(fact == key or fact in key or key in fact for fact in reported_norm):
+            used.add(index)
+    if used:
+        return len(used)
+    return min(len(reported_norm), len(recalled))
 
 
 def _require_user_id(x_user_id: str | None) -> int:
@@ -296,12 +326,16 @@ async def timeline(
 ) -> dict:
     user = _resolve_user(db, x_user_id)
     field_name: str | None = None
+    crop: str | None = None
     if field_id is not None:
-        field_name = _resolve_field(db, user, field_id).name
+        field = _resolve_field(db, user, field_id)
+        field_name, crop = field.name, field.crop
     try:
         return {
             "events": await hindsight_client.timeline_entries(
-                bank=hindsight_client.bank_for_user(user.id), field=field_name
+                bank=hindsight_client.bank_for_user(user.id),
+                field=field_name,
+                crop=crop,
             )
         }
     except Exception:
@@ -320,6 +354,7 @@ async def chat(
 ) -> ChatResponse:
     user_id: int | None = None
     field_id: int | None = None
+    crop: str | None = None
 
     if request.field_id is None:
         if not (request.farmer and request.field):
@@ -333,7 +368,7 @@ async def chat(
         user = _resolve_user(db, x_user_id)
         field = _resolve_field(db, user, request.field_id)
         user_id, field_id = user.id, field.id
-        farmer, field_name = user.name, field.name
+        farmer, field_name, crop = user.name, field.name, field.crop
         bank = hindsight_client.bank_for_user(user.id)
         await _ensure_user_bank(bank)
 
@@ -347,7 +382,7 @@ async def chat(
         )
 
     try:
-        result = await groq_agent.answer(farmer, field_name, request.message, memories)
+        result = await groq_agent.answer(farmer, field_name, request.message, memories, crop=crop)
     except Exception:
         logger.exception("groq reasoning failed")
         raise HTTPException(
@@ -389,6 +424,9 @@ async def chat(
         response=result["answer"],
         memories_used=[MemoryUsed(**memory) for memory in memories],
         memory_count=len(memories),
+        memories_used_count=_count_used_memories(
+            memories, result.get("memory_facts_used") or []
+        ),
         new_memories_stored=len(retained),
         retained_memories=retained,
         duplicates_skipped=len(skipped),
