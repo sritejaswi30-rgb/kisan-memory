@@ -91,10 +91,14 @@ class ChatResponse(BaseModel):
     user_id: str | None = None
     field_id: str | None = None
     conversation_id: int | None = None
+    message_id: int | None = None
     response: str
     memories_used: list[MemoryUsed]
     memory_count: int
     memories_used_count: int = 0
+    memory_facts_used: list[str] = PydanticField(default_factory=list)
+    memory_unavailable: bool = False
+    memory_saved: bool = False
     new_memories_stored: int
     retained_memories: list[RetainedMemory] = PydanticField(default_factory=list)
     duplicates_skipped: int = 0
@@ -579,6 +583,7 @@ async def chat(
     # A first-time user has an empty bank and Hindsight may also be briefly
     # unavailable. Neither is an error: recall degrades to an empty memory
     # context so the LLM still answers from the current question.
+    memories_unavailable = False
     try:
         memories = await hindsight_client.recall_memories(
             farmer, field_name, request_body.message, bank=bank
@@ -586,6 +591,7 @@ async def chat(
     except Exception:
         logger.warning("hindsight recall failed; answering without memories", exc_info=True)
         memories = []
+        memories_unavailable = True
 
     try:
         result = await groq_agent.answer(
@@ -603,17 +609,19 @@ async def chat(
             detail="AI service is temporarily unavailable. Please try again.",
         )
 
+    assistant_message_id: int | None = None
     if conversation is not None:
-        db.add(
-            Message(
-                conversation_id=conversation.id,
-                user_id=user.id,
-                field_id=field.id,
-                role="assistant",
-                message=result["answer"],
-            )
+        assistant_message = Message(
+            conversation_id=conversation.id,
+            user_id=user.id,
+            field_id=field.id,
+            role="assistant",
+            message=result["answer"],
         )
+        db.add(assistant_message)
         db.commit()
+        db.refresh(assistant_message)
+        assistant_message_id = assistant_message.id
 
     retained: list[RetainedMemory] = []
     skipped: list[str] = []
@@ -652,12 +660,16 @@ async def chat(
         user_id=str(user_id) if user_id is not None else None,
         field_id=str(field_id) if field_id is not None else None,
         conversation_id=conversation.id if conversation is not None else None,
+        message_id=assistant_message_id,
         response=result["answer"],
         memories_used=[MemoryUsed(**memory) for memory in memories],
         memory_count=len(memories),
         memories_used_count=_count_used_memories(
             memories, result.get("memory_facts_used") or []
         ),
+        memory_facts_used=result.get("memory_facts_used") or [],
+        memory_unavailable=memories_unavailable,
+        memory_saved=bool(retained),
         new_memories_stored=len(retained),
         retained_memories=retained,
         duplicates_skipped=len(skipped),

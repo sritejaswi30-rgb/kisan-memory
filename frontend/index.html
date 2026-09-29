@@ -6,13 +6,13 @@
   <title>KisanMemory — AI that remembers every field</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
-<body>
+<body data-screen="welcome">
   <header class="topbar">
     <div class="brand">
       <span class="logo" aria-hidden="true">🌾</span>
       <div class="brand-text">
         <h1>KisanMemory</h1>
-        <p class="tagline">AI that remembers every field and learns from every season.</p>
+        <p class="tagline">Ask your field a question. Get an answer it remembers.</p>
       </div>
     </div>
     <div class="topbar-right">
@@ -28,245 +28,201 @@
     </div>
   </header>
 
-  <!-- ============ WELCOME / AUTH SCREEN ============ -->
-  <section id="welcome-screen" class="welcome">
-    <div class="welcome-card">
+  <!-- ============ SCREEN 1: WELCOME / LANDING ============ -->
+  <section id="screen-welcome" class="screen screen-center">
+    <div class="auth-card">
       <div class="welcome-logo" aria-hidden="true">🌾</div>
-      <h2>KisanMemory</h2>
-      <p class="welcome-tagline">AI that remembers every field and learns from every season.</p>
-
+      <h2 class="welcome-name">KisanMemory</h2>
+      <p class="welcome-tagline">The AI that remembers every field and learns from every season.</p>
+      <ul class="value-list">
+        <li>Ask one question — get one relevant answer.</li>
+        <li>Only the field history that matters is shown.</li>
+        <li>Every useful new learning is saved for next time.</li>
+      </ul>
       <div id="welcome-actions" class="welcome-actions">
-        <button type="button" id="go-signin" class="big-btn big-btn-primary">Sign In</button>
-        <button type="button" id="go-signup" class="big-btn">Create Account</button>
+        <button type="button" id="go-signup" class="big-btn big-btn-primary">Sign Up</button>
+        <button type="button" id="go-signin" class="big-btn">Sign In</button>
         <button type="button" id="go-demo" class="big-btn big-btn-demo">Try Demo Data</button>
       </div>
-
-      <form id="signin-form" class="auth-form" hidden>
-        <h3>Sign in</h3>
-        <label for="signin-email">Email</label>
-        <input id="signin-email" type="email" autocomplete="email" required />
-        <label for="signin-password">Password</label>
-        <input id="signin-password" type="password" autocomplete="current-password" required />
-        <button type="submit" class="big-btn big-btn-primary">Sign In</button>
-        <button type="button" class="link-btn" data-back="welcome">← Back</button>
-      </form>
-
-      <form id="signup-form" class="auth-form" hidden>
-        <h3>Create your farmer account</h3>
-        <label for="signup-name">Full name</label>
-        <input id="signup-name" type="text" autocomplete="name" required maxlength="120" />
-        <label for="signup-email">Email</label>
-        <input id="signup-email" type="email" autocomplete="email" required maxlength="255" />
-        <label for="signup-password">Password <span class="hint-inline">at least 8 characters</span></label>
-        <input id="signup-password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" />
-        <label for="signup-village">Village</label>
-        <input id="signup-village" type="text" autocomplete="address-level2" maxlength="120" />
-        <label for="signup-state">State</label>
-        <input id="signup-state" type="text" autocomplete="address-level1" maxlength="120" />
-        <label for="signup-language">Preferred language</label>
-        <select id="signup-language">
-          <option value="English">English</option>
-          <option value="Telugu">తెలుగు (Telugu)</option>
-          <option value="Hindi">हिन्दी (Hindi)</option>
-        </select>
-        <button type="submit" class="big-btn big-btn-primary">Create Account</button>
-        <button type="button" class="link-btn" data-back="welcome">← Back</button>
-      </form>
-
       <div id="auth-error" class="auth-error" hidden></div>
-
       <p class="welcome-note">
         Demo Data is synthetic sample data for demonstration only — not real farmers.
       </p>
     </div>
   </section>
 
-  <!-- ============ APPLICATION ============ -->
-  <div id="app" hidden>
-    <main class="layout">
-      <section class="col-main">
-        <div class="card context-bar">
-          <div class="context-select" id="user-select-wrap">
-            <label for="user-select">Farmer</label>
-            <select id="user-select" aria-label="Select demo farmer">
-              <option value="1001">Ravi (Demo)</option>
-              <option value="1002">Sita (Demo)</option>
-            </select>
-          </div>
-          <div class="context-select">
-            <label for="field-select">Field</label>
-            <select id="field-select" aria-label="Select field">
-              <option>Loading…</option>
-            </select>
-          </div>
-          <div class="context-select">
-            <label for="lang-select">Answer language</label>
-            <select id="lang-select" aria-label="Select answer language">
-              <option value="English" selected>English</option>
-              <option value="Telugu">తెలుగు (Telugu)</option>
-              <option value="Hindi">हिन्दी (Hindi)</option>
-            </select>
-          </div>
-          <button type="button" id="new-field-btn" class="mini-btn" hidden>+ New field</button>
-          <div class="scope-indicator" id="memory-scope">Memory scope: —</div>
-        </div>
+  <!-- ============ SCREEN 2: SIGN UP ============ -->
+  <section id="screen-signup" class="screen screen-center" hidden>
+    <div class="auth-card">
+      <div class="welcome-logo" aria-hidden="true">🌾</div>
+      <h2>Create your account</h2>
+      <form id="signup-form" class="auth-form" novalidate>
+        <label for="signup-name">Farmer name</label>
+        <input id="signup-name" type="text" autocomplete="name" required maxlength="120" />
 
-        <form id="field-form" class="card field-form" hidden>
-          <h2>Create a field</h2>
-          <div class="field-form-row">
-            <label for="new-field-name">Field name</label>
-            <input id="new-field-name" type="text" required maxlength="120" placeholder="e.g. North Plot" />
-          </div>
-          <div class="field-form-row">
-            <label for="new-field-crop">Crop</label>
-            <input id="new-field-crop" type="text" maxlength="80" placeholder="e.g. Tomato" />
-          </div>
-          <div class="field-form-actions">
-            <button type="submit" class="big-btn big-btn-primary">Save field</button>
-            <button type="button" id="field-form-cancel" class="link-btn">Cancel</button>
-          </div>
+        <label for="signup-email">Email</label>
+        <input id="signup-email" type="email" autocomplete="email" required maxlength="255" />
+
+        <label for="signup-password">Password <span class="hint-inline">at least 8 characters</span></label>
+        <input id="signup-password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" />
+
+        <label for="signup-village">Village</label>
+        <input id="signup-village" type="text" autocomplete="address-level2" maxlength="120" />
+
+        <label for="signup-state">State</label>
+        <input id="signup-state" type="text" autocomplete="address-level1" maxlength="120" />
+
+        <label for="signup-language">Preferred language</label>
+        <select id="signup-language">
+          <option value="English">English</option>
+          <option value="Telugu">తెలుగు (Telugu)</option>
+          <option value="Hindi">हिन्दी (Hindi)</option>
+        </select>
+
+        <button type="submit" class="big-btn big-btn-primary">Create Account</button>
+      </form>
+      <div id="signup-error" class="auth-error" hidden></div>
+      <p class="auth-switch">Already have an account? <button type="button" class="link-btn" data-go="signin">Sign in</button></p>
+      <button type="button" class="link-btn" data-go="welcome">← Back</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 3: SIGN IN ============ -->
+  <section id="screen-signin" class="screen screen-center" hidden>
+    <div class="auth-card">
+      <div class="welcome-logo" aria-hidden="true">🌾</div>
+      <h2>Sign in</h2>
+      <form id="signin-form" class="auth-form" novalidate>
+        <label for="signin-email">Email</label>
+        <input id="signin-email" type="email" autocomplete="email" required />
+
+        <label for="signin-password">Password</label>
+        <input id="signin-password" type="password" autocomplete="current-password" required />
+
+        <button type="submit" class="big-btn big-btn-primary">Sign In</button>
+      </form>
+      <div id="signin-error" class="auth-error" hidden></div>
+      <p class="auth-switch">Don't have an account? <button type="button" class="link-btn" data-go="signup">Sign up</button></p>
+      <button type="button" class="link-btn" data-go="welcome">← Back</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 4: MAIN APPLICATION ============ -->
+  <div id="app" class="screen screen-app" hidden>
+    <main class="chat-shell">
+
+      <div class="context-bar">
+        <div class="context-select" id="user-select-wrap">
+          <label for="user-select">Farmer</label>
+          <select id="user-select" aria-label="Select demo farmer">
+            <option value="1001">Ravi (Demo)</option>
+            <option value="1002">Sita (Demo)</option>
+          </select>
+        </div>
+        <div class="context-select">
+          <label for="field-select">Field</label>
+          <select id="field-select" aria-label="Select field">
+            <option>Loading…</option>
+          </select>
+        </div>
+        <div class="context-select">
+          <label for="lang-select">Answer language</label>
+          <select id="lang-select" aria-label="Select answer language">
+            <option value="English" selected>English</option>
+            <option value="Telugu">తెలుగు (Telugu)</option>
+            <option value="Hindi">हिन्दी (Hindi)</option>
+          </select>
+        </div>
+        <button type="button" id="new-field-btn" class="mini-btn" hidden>+ New field</button>
+        <span id="demo-badge" class="demo-badge" hidden>DEMO DATA</span>
+        <div class="scope-indicator" id="memory-scope">Memory scope: —</div>
+      </div>
+
+      <form id="field-form" class="field-form" hidden>
+        <h3>Create a field</h3>
+        <div class="field-form-row">
+          <label for="new-field-name">Field name</label>
+          <input id="new-field-name" type="text" required maxlength="120" placeholder="e.g. North Plot" />
+        </div>
+        <div class="field-form-row">
+          <label for="new-field-crop">Crop</label>
+          <input id="new-field-crop" type="text" maxlength="80" placeholder="e.g. Tomato" />
+        </div>
+        <div class="field-form-actions">
+          <button type="submit" class="big-btn big-btn-primary">Save field</button>
+          <button type="button" id="field-form-cancel" class="link-btn">Cancel</button>
+        </div>
+      </form>
+
+      <!-- 1. THE QUESTION -->
+      <section class="ask-block">
+        <h2 class="ask-title">Ask about your field</h2>
+        <form id="chat-form" autocomplete="off">
+          <input id="chat-input" type="text" placeholder="Type your question here…" aria-label="Farmer question" />
+          <button type="submit" id="send-btn">Send</button>
         </form>
-
-        <div class="card profile">
-          <div class="profile-item"><span class="label">Farmer</span><strong id="profile-farmer">—</strong></div>
-          <div class="profile-item"><span class="label">Field</span><strong id="profile-field">—</strong></div>
-          <div class="profile-item"><span class="label">Crop</span><strong id="profile-crop">—</strong></div>
-          <div class="profile-item"><span class="label">Private memory</span><strong id="profile-bank">—</strong></div>
-          <span id="demo-badge" class="demo-badge" hidden>DEMO DATA</span>
+        <div id="suggest" class="suggest">
+          <button type="button" class="demo-btn" data-message="What happened after the heavy rain?">
+            What happened after the heavy rain?
+          </button>
+          <button type="button" class="demo-btn" data-message="What happened the last time I had this problem?">
+            What happened the last time I had this problem?
+          </button>
+          <button type="button" class="demo-btn demo-btn-report" data-message="I tried Treatment A again this time, but it did not help.">
+            🌱 Report: Treatment A did not help
+          </button>
         </div>
-
-        <div class="card activity">
-          <div class="activity-title">🧠 MEMORY USED</div>
-          <div class="activity-sub">What previous field memories influenced this answer</div>
-          <div class="activity-grid">
-            <div class="activity-stat">
-              <span class="activity-num" id="act-recalled">0</span>
-              <span class="activity-label">memories found for this question</span>
-            </div>
-            <div class="activity-stat">
-              <span class="activity-num" id="act-used">0</span>
-              <span class="activity-label">memories used for this answer</span>
-            </div>
-            <div class="activity-stat">
-              <span class="activity-num" id="act-retained">0</span>
-              <span class="activity-label">💾 new memories saved just now</span>
-            </div>
-            <div class="activity-stat">
-              <span class="activity-num activity-num-small" id="act-history">—</span>
-              <span class="activity-label">answer grounded in field history</span>
-            </div>
-          </div>
-          <div class="activity-dup" id="act-dup" hidden></div>
-        </div>
-
-        <div class="card ask">
-          <h2>Ask about your field history</h2>
-          <div class="demo-buttons">
-            <button type="button" class="demo-btn" data-message="What happened after the heavy rain?">
-              What happened after the heavy rain?
-            </button>
-            <button type="button" class="demo-btn" data-message="What happened the last time I had this problem?">
-              What happened the last time I had this problem?
-            </button>
-            <button type="button" class="demo-btn" data-message="What have I learned from my previous experiences?">
-              What have I learned from my previous experiences?
-            </button>
-            <button type="button" class="demo-btn demo-btn-report" data-message="I tried Treatment A again this time, but it did not help.">
-              🌱 Report: Treatment A did not help
-            </button>
-          </div>
-          <form id="chat-form" autocomplete="off">
-            <input id="chat-input" type="text" placeholder="Ask about your field history..." aria-label="Farmer question" />
-            <button type="submit" id="send-btn">Send</button>
-          </form>
-        </div>
-
         <div id="error-banner" class="error-banner" hidden>
           <span id="error-text"></span>
           <button type="button" id="error-dismiss" class="error-dismiss" aria-label="Dismiss">✕</button>
         </div>
-
-        <div class="card conversation">
-          <div class="section-head">
-            <h2>Field conversation</h2>
-            <span class="hint">Saved to your account · Memory · question · answer · new learning</span>
-          </div>
-          <ul class="legend">
-            <li class="legend-item legend-memory">Past field memory</li>
-            <li class="legend-item legend-farmer">Current farmer message</li>
-            <li class="legend-item legend-ai">AI response</li>
-            <li class="legend-item legend-new">New memory created</li>
-          </ul>
-          <div id="empty-state" class="empty-state">
-            <div class="empty-title">No questions asked yet</div>
-            <div class="empty-sub" id="empty-sub">Ask above — KisanMemory answers from this farmer's own recorded field history, not generic advice.</div>
-          </div>
-          <div id="messages" class="messages"></div>
-        </div>
-
-        <div id="learning-panel" class="learning-panel" hidden>
-          <div class="learning-title" id="learning-title">💾 NEW MEMORY — what the farmer just taught KisanMemory</div>
-          <ul id="learning-list" class="learning-list"></ul>
-        </div>
-
-        <div class="card memories">
-          <div class="section-head">
-            <h2 id="memory-heading">🧠 Memory Used</h2>
-            <span class="hint">What previous field memories influenced this answer · <span id="memory-count">0</span> found · <span id="memory-used">0</span> used</span>
-          </div>
-          <ul id="memory-list" class="memory-list">
-            <li class="memory-empty">No memories used yet. Ask a question to recall field history.</li>
-          </ul>
-        </div>
-
-        <div class="card why" id="why-card" hidden>
-          <h2>Why this answer?</h2>
-          <div class="why-sub">Each row below is a real memory used for this answer:</div>
-          <ul id="why-list" class="why-list"></ul>
-        </div>
       </section>
 
-      <aside class="col-side">
-        <div class="card compare-card">
-          <div class="section-head">
-            <h2>Before vs After</h2>
-            <span class="hint">Conceptual comparison</span>
-          </div>
-          <div class="compare-grid">
-            <div class="compare-col compare-without">
-              <div class="compare-tag">❌ Without memory</div>
-              <p class="compare-text">"Based only on your current message, I don't know what happened previously."</p>
-              <span class="compare-note">Illustration of a typical assistant with no saved field history — not an AI answer.</span>
-            </div>
-            <div class="compare-col compare-with">
-              <div class="compare-tag">✅ With KisanMemory</div>
-              <p class="compare-text" id="compare-answer">Ask a question above to see a real personalized answer from this field's own history.</p>
-              <span class="compare-note" id="compare-meta">Your actual answer will appear here after you ask.</span>
-            </div>
+      <!-- 2-5. ANSWER → RELEVANT MEMORY → NEW MEMORY -->
+      <section class="answer-block">
+        <div id="empty-state" class="empty-state">
+          <div class="empty-title">No questions asked yet</div>
+          <div class="empty-sub" id="empty-sub">
+            Ask above — KisanMemory answers from your own recorded field history when there is one,
+            and from solid general guidance when there is not.
           </div>
         </div>
 
-        <div class="card timeline-card">
-          <div class="section-head">
-            <h2>🌱 Field History</h2>
-            <span class="hint" id="timeline-hint">Persistent history for this farmer and field</span>
-          </div>
-          <ol id="timeline" class="timeline">
-            <li class="timeline-loading">
-              Loading timeline…
-              <div class="skeleton"></div>
-              <div class="skeleton"></div>
-              <div class="skeleton"></div>
-            </li>
-          </ol>
+        <div id="messages" class="messages"></div>
+
+        <div class="post-actions">
+          <button type="button" id="history-open" class="history-btn">🌱 View all field history</button>
         </div>
-      </aside>
+      </section>
     </main>
 
     <footer class="disclaimer">
       🌾 Jai Kisan · Information provided by KisanMemory is for general guidance. For serious crop
       problems or treatment decisions, consult a qualified agricultural expert.
     </footer>
+  </div>
+
+  <!-- ============ OPTIONAL FULL HISTORY VIEW ============ -->
+  <div id="history-modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="history-title">
+      <header class="modal-head">
+        <div>
+          <h2 id="history-title">🌱 Field history</h2>
+          <p class="modal-sub" id="history-sub">Complete history for this farmer and field</p>
+        </div>
+        <button type="button" id="history-close" class="ghost-btn">← Back to chat</button>
+      </header>
+      <div class="modal-body">
+        <ol id="timeline" class="timeline">
+          <li class="timeline-loading">
+            Loading timeline…
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+          </li>
+        </ol>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>
