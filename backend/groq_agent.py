@@ -1,7 +1,9 @@
+import asyncio
 import json
 import os
 import re
 
+import httpx
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
@@ -9,6 +11,9 @@ load_dotenv()
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+DEFAULT_GEMINI_MODEL = "gemini-3.7-flash,gemini-flash-lite-latest"
 
 SYSTEM_PROMPT = (
     "You are KisanMemory, a farmer's long-term field-memory assistant.\n"
@@ -49,10 +54,32 @@ OUTPUT_INSTRUCTION = (
 EMPTY_RESULT = {"answer": "", "memory_facts_used": [], "new_memory_candidates": []}
 
 _client: AsyncOpenAI | None = None
+_gemini_client: httpx.AsyncClient | None = None
+
+
+def provider() -> str:
+    """Active LLM provider: LLM_PROVIDER=gemini|groq (defaults to gemini when a
+    Gemini key is present, otherwise groq)."""
+    configured = os.getenv("LLM_PROVIDER", "").strip().lower()
+    if configured in ("gemini", "groq"):
+        return configured
+    if os.getenv("GEMINI_API_KEY", "").strip():
+        return "gemini"
+    return "groq"
 
 
 def model_name() -> str:
+    if provider() == "gemini":
+        return gemini_models()[0]
     return os.getenv("GROQ_MODEL", "").strip() or DEFAULT_MODEL
+
+
+def gemini_models() -> list[str]:
+    """Gemini models to try in order (GEMINI_MODEL may list several, e.g. when
+    the primary free-tier model is rate-limited)."""
+    configured = os.getenv("GEMINI_MODEL", "").strip() or DEFAULT_GEMINI_MODEL
+    models = [name.strip() for name in configured.split(",") if name.strip()]
+    return models or [DEFAULT_GEMINI_MODEL.split(",")[0]]
 
 
 def get_client() -> AsyncOpenAI:
@@ -65,7 +92,36 @@ def get_client() -> AsyncOpenAI:
     return _client
 
 
+def get_gemini_client() -> httpx.AsyncClient:
+    global _gemini_client
+    if _gemini_client is None:
+        if not os.getenv("GEMINI_API_KEY", "").strip():
+            raise RuntimeError("GEMINI_API_KEY must be set in .env")
+        _gemini_client = httpx.AsyncClient(timeout=120.0)
+    return _gemini_client
+
+
+def _gemini_headers() -> dict:
+    return {"x-goog-api-key": os.getenv("GEMINI_API_KEY", "").strip()}
+
+
+async def _gemini_ping() -> bool:
+    """List models (a free metadata call — no tokens generated)."""
+    try:
+        response = await get_gemini_client().get(
+            f"{GEMINI_BASE_URL}/models",
+            params={"pageSize": 1},
+            headers=_gemini_headers(),
+            timeout=30.0,
+        )
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 async def llm_available() -> bool:
+    if provider() == "gemini":
+        return await _gemini_ping()
     try:
         await get_client().models.list()
         return True
@@ -107,6 +163,42 @@ def _normalize(data: dict | None, fallback_answer: str) -> dict:
     }
 
 
+async def _gemini_generate(system: str, user_prompt: str, json_mode: bool) -> str:
+    """Gemini generateContent call through the official REST API.
+
+    Mirrors the Groq/OpenAI-compatible call: system instruction + one user turn,
+    with an optional JSON output mode and a text fallback on retry. Each model in
+    GEMINI_MODEL is retried with short backoff (free-tier 429/503 are common),
+    then the next model in the list is tried.
+    """
+    payload: dict = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+    }
+    if json_mode:
+        payload["generationConfig"] = {"responseMimeType": "application/json"}
+
+    headers = {**_gemini_headers(), "Content-Type": "application/json"}
+    response: httpx.Response | None = None
+    for model in gemini_models():
+        url = f"{GEMINI_BASE_URL}/models/{model}:generateContent"
+        for attempt in range(3):
+            response = await get_gemini_client().post(url, headers=headers, json=payload)
+            if response.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+                await asyncio.sleep(3.0 * (attempt + 1))
+                continue
+            break
+        if response.status_code == 200:
+            break
+
+    assert response is not None
+    response.raise_for_status()
+    data = response.json()
+    candidates = data.get("candidates") or [{}]
+    parts = candidates[0].get("content", {}).get("parts", [])
+    return "".join(str(part.get("text") or "") for part in parts)
+
+
 async def answer(
     farmer: str,
     field: str,
@@ -134,21 +226,27 @@ async def answer(
         {"role": "user", "content": user_prompt},
     ]
 
-    client = get_client()
     content = ""
-    try:
-        response = await client.chat.completions.create(
-            model=model_name(),
-            messages=messages,
-            response_format={"type": "json_object"},
-        )
-        content = response.choices[0].message.content or ""
-    except Exception:
-        response = await client.chat.completions.create(
-            model=model_name(),
-            messages=messages,
-        )
-        content = response.choices[0].message.content or ""
+    if provider() == "gemini":
+        try:
+            content = await _gemini_generate(SYSTEM_PROMPT, user_prompt, json_mode=True)
+        except Exception:
+            content = await _gemini_generate(SYSTEM_PROMPT, user_prompt, json_mode=False)
+    else:
+        client = get_client()
+        try:
+            response = await client.chat.completions.create(
+                model=model_name(),
+                messages=messages,
+                response_format={"type": "json_object"},
+            )
+            content = response.choices[0].message.content or ""
+        except Exception:
+            response = await client.chat.completions.create(
+                model=model_name(),
+                messages=messages,
+            )
+            content = response.choices[0].message.content or ""
 
     if not content.strip():
         return dict(EMPTY_RESULT)
