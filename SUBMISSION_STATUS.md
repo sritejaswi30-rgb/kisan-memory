@@ -7,8 +7,8 @@ Prepared in submission mode. No application logic, frontend, database, or AI pip
 - **Project:** KisanMemory — farm memory + AI advisor for Indian farmers (Hindsight long-term memory, Groq LLM reasoning).
 - **Repository:** `C:\Users\Shre0\OneDrive\Desktop\kissan-memory`
 - **Branch:** `master`
-- **Current commit:** `68bab2b` (`68bab2bcc02c76d42a3227aa8cdeca01302e03dd`) — *feat: complete KisanMemory multi-user MVP*
-- **Working tree:** 6 modified files, **not committed** (see §10). Nothing was committed or pushed during submission mode.
+- **Current commit:** `0695248` (`0695248d939bd2d84df31d43a3699b82ff9e8a77`) — *feat: UI accuracy, memory presentation, and submission documentation* (previous: `68bab2b`, *feat: complete KisanMemory multi-user MVP*).
+- **Working tree:** `README.md` + `frontend/index.html` carry presentation-only edits from the final polish pass (see §10). Nothing was pushed.
 
 ## 2. Architecture
 
@@ -123,7 +123,9 @@ Linux/macOS equivalent: `uvicorn backend.main:app --host 0.0.0.0 --port 8055`
 
 **No secrets are included in this repository or this document.**
 
-## 10. Files changed (uncommitted working tree)
+## 10. Files changed
+
+**Committed in `0695248` — 7 files, +873/−95:**
 
 ```
 backend/groq_agent.py       |  16 +-
@@ -132,10 +134,12 @@ backend/main.py             |  46 ++++-
 frontend/app.js             | 411 +++++++++++++++++++++++++++++++++++++-------
 frontend/index.html         |  10 +-
 frontend/styles.css         |  45 ++++-
-6 files changed, 729 insertions(+), 95 deletions(-)
+SUBMISSION_STATUS.md        | (new)
 ```
 
-Content: UI accuracy/memory-presentation work (Why-This-Answer evidence, timeline event granularity, retrieved-vs-used counts, response safety wording, crop consistency). Nothing was committed or pushed.
+Content: UI accuracy/memory-presentation work (Why-This-Answer evidence, timeline event granularity, retrieved-vs-used counts, response safety wording, crop consistency) plus this document.
+
+**Uncommitted presentation-only polish (2 files):** `README.md` (competition-facing rewrite: architecture diagram, demo story, "Why Hindsight?", judge checklist, known limitations) and `frontend/index.html` (3 label text tweaks, no logic). Nothing was pushed.
 
 ## 11. Submission readiness
 
