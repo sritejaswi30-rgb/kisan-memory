@@ -4,12 +4,39 @@ const DEMO_USERS = [
 ];
 
 const els = {
+  app: document.getElementById("app"),
+  welcome: document.getElementById("welcome-screen"),
+  welcomeActions: document.getElementById("welcome-actions"),
+  signinForm: document.getElementById("signin-form"),
+  signupForm: document.getElementById("signup-form"),
+  authError: document.getElementById("auth-error"),
+  goSignin: document.getElementById("go-signin"),
+  goSignup: document.getElementById("go-signup"),
+  goDemo: document.getElementById("go-demo"),
+  signinEmail: document.getElementById("signin-email"),
+  signinPassword: document.getElementById("signin-password"),
+  signupName: document.getElementById("signup-name"),
+  signupEmail: document.getElementById("signup-email"),
+  signupPassword: document.getElementById("signup-password"),
+  signupVillage: document.getElementById("signup-village"),
+  signupState: document.getElementById("signup-state"),
+  signupLanguage: document.getElementById("signup-language"),
+  accountName: document.getElementById("account-name"),
+  logoutBtn: document.getElementById("logout-btn"),
   form: document.getElementById("chat-form"),
   input: document.getElementById("chat-input"),
   send: document.getElementById("send-btn"),
   reset: document.getElementById("reset-btn"),
   userSelect: document.getElementById("user-select"),
+  userSelectWrap: document.getElementById("user-select-wrap"),
   fieldSelect: document.getElementById("field-select"),
+  langSelect: document.getElementById("lang-select"),
+  newFieldBtn: document.getElementById("new-field-btn"),
+  fieldForm: document.getElementById("field-form"),
+  fieldName: document.getElementById("new-field-name"),
+  fieldCrop: document.getElementById("new-field-crop"),
+  fieldCancel: document.getElementById("field-form-cancel"),
+  demoBadge: document.getElementById("demo-badge"),
   memoryScope: document.getElementById("memory-scope"),
   profileFarmer: document.getElementById("profile-farmer"),
   profileField: document.getElementById("profile-field"),
@@ -37,28 +64,41 @@ const els = {
   memoryUsed: document.getElementById("memory-used"),
   whyCard: document.getElementById("why-card"),
   whyList: document.getElementById("why-list"),
+  compareAnswer: document.getElementById("compare-answer"),
+  compareMeta: document.getElementById("compare-meta"),
 };
 
 let busy = false;
 let latestRetainedDate = null;
-let currentUser = DEMO_USERS[0];
+let mode = "welcome"; // "welcome" | "demo" | "signed-in"
+let currentUser = null;
 let currentField = null;
 let availableFields = [];
 
 function userHeaders(extra) {
-  return Object.assign({ "X-User-ID": currentUser.id }, extra || {});
+  const headers = Object.assign({}, extra || {});
+  if (mode === "demo" && currentUser) {
+    headers["X-User-ID"] = currentUser.id;
+  }
+  return headers;
 }
 
 function updateScope() {
   const fieldName = currentField ? currentField.name : "—";
-  els.memoryScope.textContent = `Memory scope: ${currentUser.name} • ${fieldName}`;
-  els.profileFarmer.textContent = currentUser.name;
+  const farmerName = currentUser ? currentUser.name : "—";
+  els.memoryScope.textContent = `Memory scope: ${farmerName} • ${fieldName}`;
+  els.profileFarmer.textContent = farmerName;
   els.profileField.textContent = currentField ? currentField.name : "—";
   els.profileCrop.textContent = (currentField && currentField.crop) || "—";
-  els.profileBank.textContent = `kisan-user-${currentUser.id}`;
-  els.timelineHint.textContent = `Live from Hindsight · ${fieldName}`;
-  els.emptySub.textContent =
-    `Ask above — KisanMemory answers from ${currentUser.name}'s own recorded field history, not generic advice.`;
+  els.profileBank.textContent = currentUser
+    ? `private to ${currentUser.name}`
+    : "—";
+  els.timelineHint.textContent = currentField
+    ? `Persistent history · ${farmerName} · ${fieldName}`
+    : "Persistent history for this farmer and field";
+  els.emptySub.textContent = currentUser
+    ? `Ask above — KisanMemory answers from ${currentUser.name}'s own recorded field history, not generic advice.`
+    : "Ask above — KisanMemory answers from this farmer's own recorded field history.";
 }
 
 function escapeHtml(value) {
@@ -85,7 +125,8 @@ const TREATMENT_RE = /\btreatment\s+[a-z0-9]+\b/gi;
 const MONTHS_JS = {
   january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
   july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
-  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9,
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, sept: 9,
   oct: 10, nov: 11, dec: 12,
 };
 const OBJECT_WORDS = [
@@ -468,11 +509,14 @@ function renderActivity(data) {
 
 function renderMemories(memories) {
   els.memoryCount.textContent = String(memories.length);
+  const heading = document.getElementById("memory-heading");
   if (!memories.length) {
+    if (heading) heading.textContent = "🧠 No previous field history yet";
     els.memoryList.innerHTML =
-      '<li class="memory-empty">No relevant past memories were found for this question — the answer is general guidance, not field history.</li>';
+      '<li class="memory-empty">No previous field history yet — this answer is general guidance for the question you asked. KisanMemory will remember useful field experiences for next time.</li>';
     return;
   }
+  if (heading) heading.textContent = "🧠 Memory Used";
 
   const groups = [];
   const indexByKey = new Map();
@@ -514,7 +558,7 @@ function renderLearning(retained, skipped) {
         `<div class="learning-meta">` +
         `<span class="chip">${escapeHtml(formatDate(item.date))}</span>` +
         `<span class="chip">${escapeHtml(item.field)}</span>` +
-        `<span class="chip">stored in Hindsight</span>` +
+        `<span class="chip">saved to your field history</span>` +
         `</div></li>`
     );
   });
@@ -523,7 +567,7 @@ function renderLearning(retained, skipped) {
     items.push(
       `<li class="learning-dup"><div>${escapeHtml(stripWhen(text))}</div>` +
         `<div class="learning-meta">` +
-        `<span class="chip">already in Hindsight</span>` +
+        `<span class="chip">already remembered</span>` +
         `<span class="chip">no duplicate created</span>` +
         `</div></li>`
     );
@@ -531,8 +575,8 @@ function renderLearning(retained, skipped) {
 
   els.learningList.innerHTML = items.join("");
   title.textContent = hasRetained
-    ? "🌱 NEW MEMORY CREATED — field experience remembered"
-    : "🌱 ALREADY REMEMBERED — duplicate ignored, nothing stored twice";
+    ? "💾 Memory Updated — what KisanMemory now remembers"
+    : "💾 ALREADY REMEMBERED — duplicate ignored, nothing stored twice";
   els.learningPanel.classList.toggle("learning-panel-dup", !hasRetained && hasSkipped);
   els.learningPanel.hidden = false;
   if (hasRetained) latestRetainedDate = retained[retained.length - 1].date;
@@ -585,10 +629,10 @@ async function checkHealth() {
   try {
     const response = await fetch("/health");
     const data = await response.json();
-    setPill(els.statusHindsight, Boolean(data.hindsight), "Hindsight");
+    setPill(els.statusHindsight, Boolean(data.hindsight), "Memory");
     setPill(els.statusLlm, Boolean(data.llm), "AI");
   } catch (error) {
-    setPill(els.statusHindsight, false, "Hindsight");
+    setPill(els.statusHindsight, false, "Memory");
     setPill(els.statusLlm, false, "AI");
   }
 }
@@ -609,17 +653,52 @@ async function loadFields() {
     currentField = availableFields[0];
     els.fieldSelect.value = String(currentField.id);
   } else {
-    els.fieldSelect.innerHTML = '<option value="">No fields available</option>';
+    els.fieldSelect.innerHTML = '<option value="">No fields yet — create one</option>';
     currentField = null;
+    if (mode === "signed-in") openFieldForm();
   }
   updateScope();
   await loadTimeline();
+  await loadHistory();
+}
+
+async function loadHistory() {
+  if (!currentField) return;
+  try {
+    const response = await fetch(`/conversations?field_id=${currentField.id}`, {
+      headers: userHeaders(),
+    });
+    if (!response.ok) throw new Error("history unavailable");
+    const conversations = await response.json();
+    if (!conversations.length) return;
+    const messagesResponse = await fetch(`/conversations/${conversations[0].id}/messages`, {
+      headers: userHeaders(),
+    });
+    if (!messagesResponse.ok) throw new Error("history unavailable");
+    const messages = await messagesResponse.json();
+    if (!messages.length) return;
+    els.messages.innerHTML = "";
+    messages.forEach((message) => {
+      if (message.role === "user") {
+        appendMessage(
+          "farmer",
+          "SAVED MESSAGE",
+          `${currentUser ? currentUser.name : "Farmer"} · ${currentField.name}`,
+          message.message
+        );
+      } else if (message.role === "assistant") {
+        appendMessage("ai", "SAVED AI RESPONSE", "from your saved field history", message.message);
+      }
+    });
+  } catch (error) {
+    // Conversation history is optional; the live chat still works without it.
+  }
 }
 
 async function askQuestion(message) {
   if (busy || !message) return;
   if (!currentField) {
-    showError("No field selected for this farmer yet.");
+    showError("Create or select a field first.");
     return;
   }
   busy = true;
@@ -632,7 +711,7 @@ async function askQuestion(message) {
     "ai",
     "AI RESPONSE",
     "thinking…",
-    "Recalling your field history from Hindsight…"
+    "Recalling your field history…"
   );
   thinking.classList.add("msg-thinking");
 
@@ -640,19 +719,37 @@ async function askQuestion(message) {
     const response = await fetch("/chat", {
       method: "POST",
       headers: userHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ field_id: currentField.id, message }),
+      body: JSON.stringify({
+        field_id: currentField.id,
+        message,
+        language: els.langSelect.value || "English",
+      }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.detail || "Something went wrong. Please try again.");
+      const detail =
+        typeof data.detail === "string" && data.detail
+          ? data.detail
+          : "Something went wrong. Please try again.";
+      throw new Error(detail);
     }
 
     thinking.remove();
-    appendMessage("ai", "AI RESPONSE", "personalized from field memory", data.response);
+    const usedCount = (data.memories_used || []).length;
+    appendMessage(
+      "ai",
+      "AI RESPONSE",
+      usedCount ? "personalized from field memory" : "answered from current question · general guidance",
+      data.response
+    );
     renderMemories(data.memories_used || []);
     renderActivity(data);
     renderWhy(data.memories_used || []);
     renderLearning(data.retained_memories || [], data.skipped_experiences || []);
+    els.compareAnswer.textContent = data.response;
+    els.compareMeta.textContent = usedCount
+      ? `${usedCount} real memories from ${currentUser.name}'s field history`
+      : "No previous field history yet — answered from the current question";
     if ((data.retained_memories || []).length) {
       await loadTimeline();
     }
@@ -674,6 +771,8 @@ function resetDemo() {
   els.memoryCount.textContent = "0";
   els.memoryList.innerHTML =
     '<li class="memory-empty">No memories used yet. Ask a question to recall field history.</li>';
+  const memoryHeading = document.getElementById("memory-heading");
+  if (memoryHeading) memoryHeading.textContent = "🧠 Memory Used";
   els.learningPanel.hidden = true;
   els.learningList.innerHTML = "";
   els.whyCard.hidden = true;
@@ -689,10 +788,218 @@ function resetDemo() {
   clearError();
   latestRetainedDate = null;
   els.input.value = "";
-  loadTimeline();
+  els.compareAnswer.textContent =
+    "Ask a question above to see a real personalized answer from this field's own history.";
+  els.compareMeta.textContent = "Your actual answer will appear here after you ask.";
   checkHealth();
   els.input.focus();
 }
+
+/* ---------------- welcome / auth ---------------- */
+
+function showAuthError(message) {
+  els.authError.textContent = message;
+  els.authError.hidden = false;
+}
+
+function hideAuthError() {
+  els.authError.hidden = true;
+  els.authError.textContent = "";
+}
+
+function showWelcome() {
+  mode = "welcome";
+  els.app.hidden = true;
+  els.welcome.hidden = false;
+  els.welcomeActions.hidden = false;
+  els.signinForm.hidden = true;
+  els.signupForm.hidden = true;
+  hideAuthError();
+}
+
+function showAuthForm(which) {
+  hideAuthError();
+  els.welcomeActions.hidden = true;
+  els.signinForm.hidden = which !== "signin";
+  els.signupForm.hidden = which !== "signup";
+  if (which === "signin") {
+    els.signinPassword.value = "";
+    els.signinEmail.focus();
+  } else {
+    els.signupName.focus();
+  }
+}
+
+function enterApp(user, chosenMode) {
+  mode = chosenMode;
+  currentUser = user;
+  els.welcome.hidden = true;
+  els.app.hidden = false;
+  els.accountName.hidden = false;
+  els.logoutBtn.hidden = false;
+  els.reset.hidden = chosenMode !== "demo";
+  els.demoBadge.hidden = chosenMode !== "demo";
+  els.userSelectWrap.hidden = chosenMode !== "demo";
+  els.newFieldBtn.hidden = false;
+  els.accountName.textContent =
+    chosenMode === "demo" ? "Demo mode" : `${user.name}${user.village ? ` · ${user.village}` : ""}`;
+  if (user.preferred_language) {
+    const match = Array.from(els.langSelect.options).find(
+      (option) => option.value === user.preferred_language
+    );
+    if (match) els.langSelect.value = user.preferred_language;
+  }
+  resetDemo();
+  updateScope();
+  loadFields();
+}
+
+async function boot() {
+  checkHealth();
+  try {
+    const response = await fetch("/auth/me");
+    if (response.ok) {
+      const user = await response.json();
+      enterApp(user, "signed-in");
+      return;
+    }
+  } catch (error) {
+    // Fall through to the welcome screen.
+  }
+  showWelcome();
+}
+
+els.goSignin.addEventListener("click", () => showAuthForm("signin"));
+els.goSignup.addEventListener("click", () => showAuthForm("signup"));
+els.goDemo.addEventListener("click", () => {
+  hideAuthError();
+  currentUser = DEMO_USERS[0];
+  els.userSelect.value = currentUser.id;
+  enterApp(DEMO_USERS[0], "demo");
+});
+
+document.querySelectorAll("[data-back]").forEach((button) => {
+  button.addEventListener("click", showWelcome);
+});
+
+els.signinForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  hideAuthError();
+  const email = els.signinEmail.value.trim();
+  const password = els.signinPassword.value;
+  if (!email || !password) {
+    showAuthError("Enter your email and password.");
+    return;
+  }
+  try {
+    const response = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showAuthError(typeof data.detail === "string" ? data.detail : "Sign in failed.");
+      return;
+    }
+    els.signinPassword.value = "";
+    enterApp(data, "signed-in");
+  } catch (error) {
+    showAuthError("Network problem — check your connection and try again.");
+  }
+});
+
+els.signupForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  hideAuthError();
+  const name = els.signupName.value.trim();
+  const email = els.signupEmail.value.trim();
+  const password = els.signupPassword.value;
+  if (!name || !email || !password) {
+    showAuthError("Fill in your name, email, and password.");
+    return;
+  }
+  if (password.length < 8) {
+    showAuthError("Password must be at least 8 characters.");
+    return;
+  }
+  try {
+    const response = await fetch("/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+        village: els.signupVillage.value.trim() || null,
+        state: els.signupState.value.trim() || null,
+        preferred_language: els.signupLanguage.value,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showAuthError(typeof data.detail === "string" ? data.detail : "Registration failed.");
+      return;
+    }
+    els.signupPassword.value = "";
+    enterApp(data, "signed-in");
+  } catch (error) {
+    showAuthError("Network problem — check your connection and try again.");
+  }
+});
+
+els.logoutBtn.addEventListener("click", async () => {
+  try {
+    await fetch("/auth/logout", { method: "POST" });
+  } catch (error) {
+    // Signing out locally is still correct if the network fails.
+  }
+  currentUser = null;
+  currentField = null;
+  availableFields = [];
+  els.accountName.hidden = true;
+  els.logoutBtn.hidden = true;
+  showWelcome();
+});
+
+/* ---------------- field creation ---------------- */
+
+function openFieldForm() {
+  els.fieldForm.hidden = false;
+  els.fieldName.value = "";
+  els.fieldCrop.value = "";
+  els.fieldName.focus();
+}
+
+els.newFieldBtn.addEventListener("click", openFieldForm);
+els.fieldCancel.addEventListener("click", () => {
+  els.fieldForm.hidden = true;
+});
+
+els.fieldForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  clearError();
+  const name = els.fieldName.value.trim();
+  if (!name) return;
+  try {
+    const response = await fetch("/fields", {
+      method: "POST",
+      headers: userHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ name, crop: els.fieldCrop.value.trim() }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showError(typeof data.detail === "string" ? data.detail : "Could not create the field.");
+      return;
+    }
+    els.fieldForm.hidden = true;
+    await loadFields();
+  } catch (error) {
+    showError("Network problem — check your connection and try again.");
+  }
+});
+
+/* ---------------- chat wiring ---------------- */
 
 els.form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -720,9 +1027,9 @@ els.fieldSelect.addEventListener("change", () => {
     availableFields.find((field) => String(field.id) === els.fieldSelect.value) || null;
   updateScope();
   resetDemo();
+  loadTimeline();
+  loadHistory();
 });
 
-checkHealth();
-loadFields();
+boot();
 setInterval(checkHealth, 30000);
-els.input.focus();

@@ -205,6 +205,7 @@ async def answer(
     message: str,
     memories: list[dict],
     crop: str | None = None,
+    language: str | None = None,
 ) -> dict:
     if memories:
         memory_lines = "\n".join(f"- [{m['type']}] {m['text']}" for m in memories)
@@ -212,10 +213,12 @@ async def answer(
         memory_lines = "(no relevant field memories found)"
 
     crop_line = f"Current field crop: {crop}\n" if crop else ""
+    language_line = f"Output language requested: {language}\n" if language else ""
     user_prompt = (
         f"Farmer: {farmer}\n"
         f"Field: {field}\n"
         f"{crop_line}"
+        f"{language_line}"
         f"Farmer's message: {message}\n"
         f"\nRelevant recalled Hindsight memories:\n{memory_lines}\n"
         f"\n{OUTPUT_INSTRUCTION}"

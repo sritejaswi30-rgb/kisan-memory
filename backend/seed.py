@@ -88,9 +88,12 @@ def ensure_demo_users(session: Session) -> list[User]:
                 id=spec["id"],
                 name=spec["name"],
                 preferred_language=spec["preferred_language"],
+                is_demo=True,
             )
             session.add(user)
             session.flush()
+        else:
+            user.is_demo = True
         for field_spec in spec["fields"]:
             existing = session.scalars(
                 select(Field).where(Field.user_id == user.id, Field.name == field_spec["name"])
